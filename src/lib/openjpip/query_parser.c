@@ -39,7 +39,6 @@
 #endif
 
 #include <stdio.h>
-#include <assert.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -62,21 +61,11 @@
  */
 query_param_t * get_initquery(void);
 
-/*
- * get a pair of field name and value from the string starting fieldname=fieldval&... format
- *
- * @param[in] stringptr pointer to the beginning of the parsing string
- * @param[out] fieldname string to copy the field name, if not found, NULL
- * @param[out] fieldval string to copy the field value, if not found, NULL
- * @return pointer to the next field string, if there is none, NULL
- */
-char * get_fieldparam(const char *stringptr, char *fieldname, char *fieldval);
-
-void parse_cclose(char *src, query_param_t *query_param);
-void parse_metareq(char *field, query_param_t *query_param);
+OPJ_BOOL parse_cclose(char *src, query_param_t *query_param);
+OPJ_BOOL parse_metareq(char *field, query_param_t *query_param);
 
 /* parse the requested components (parses forms like:a; a,b; a-b; a-b,c;  a,b-c)*/
-void parse_comps(char *field, query_param_t *query_param);
+OPJ_BOOL parse_comps(char *field, query_param_t *query_param);
 
 
 /** maximum length of field name*/
@@ -85,19 +74,61 @@ void parse_comps(char *field, query_param_t *query_param);
 /** maximum length of field value*/
 #define MAX_LENOFFIELDVAL 128
 
+/** parse result: request syntax is not well formed */
+#define QUERY_PARSE_FORMAT_ERROR 0
+/** parse result: a field name/value is syntactically valid but exceeds the
+ * allowed length (it must be rejected before any bounded buffer is written) */
+#define QUERY_PARSE_LENGTH_ERROR 1
+/** parse result: request parsed successfully */
+#define QUERY_PARSE_OK 2
+
+/* Bounded field extraction: validates lengths against the remaining buffer
+ * capacity before copying, so an overlong field is rejected rather than
+ * overflowing the caller's stack buffers. */
+static int get_fieldparam_safe(const char *stringptr, char *fieldname,
+                               size_t fieldname_sz, char *fieldval,
+                               size_t fieldval_sz, char **nextptr);
+
 query_param_t * parse_query(const char *query_string)
 {
     query_param_t *query_param;
     const char *pquery;
-    char fieldname[MAX_LENOFFIELDNAME], fieldval[MAX_LENOFFIELDVAL];
+    char fieldname[MAX_LENOFFIELDNAME + 1], fieldval[MAX_LENOFFIELDVAL + 1];
+    int parse_result;
 
     query_param = get_initquery();
 
     pquery = query_string;
 
+    /* An empty query string is valid and simply yields the default,
+     * initialized parameter set (this matches the historical behavior). */
+    if (pquery == NULL || pquery[0] == '\0') {
+        return query_param;
+    }
+
     while (pquery != NULL) {
 
-        pquery = get_fieldparam(pquery, fieldname, fieldval);
+        {
+            char *next_field = NULL;
+            parse_result = get_fieldparam_safe(pquery, fieldname,
+                                                sizeof(fieldname), fieldval,
+                                                sizeof(fieldval), &next_field);
+            pquery = next_field;
+        }
+
+        if (parse_result != QUERY_PARSE_OK) {
+            if (parse_result == QUERY_PARSE_FORMAT_ERROR) {
+                fprintf(stderr,
+                        "Malformed JPIP query: field without '=' separator\n");
+            } else {
+                fprintf(stderr,
+                        "JPIP query rejected: field name or value exceeds "
+                        "maximum length (name <= %d, value <= %d)\n",
+                        MAX_LENOFFIELDNAME, MAX_LENOFFIELDVAL);
+            }
+            delete_query(&query_param);
+            return NULL;
+        }
 
         if (fieldname[0] != '\0') {
             if (strcasecmp(fieldname, "target") == 0) {
@@ -137,15 +168,24 @@ query_param_t * parse_query(const char *query_string)
             }
 
             else if (strcasecmp(fieldname, "cclose") == 0) {
-                parse_cclose(fieldval, query_param);
+                if (! parse_cclose(fieldval, query_param)) {
+                    delete_query(&query_param);
+                    return NULL;
+                }
             }
 
             else if (strcasecmp(fieldname, "metareq") == 0) {
-                parse_metareq(fieldval, query_param);
+                if (! parse_metareq(fieldval, query_param)) {
+                    delete_query(&query_param);
+                    return NULL;
+                }
             }
 
             else if (strcasecmp(fieldname, "comps") == 0) {
-                parse_comps(fieldval, query_param);
+                if (! parse_comps(fieldval, query_param)) {
+                    delete_query(&query_param);
+                    return NULL;
+                }
             }
 
             else if (strcasecmp(fieldname, "type") == 0) {
@@ -159,7 +199,7 @@ query_param_t * parse_query(const char *query_string)
             else if (strcasecmp(fieldname, "len") == 0) {
                 sscanf(fieldval, "%d", &query_param->len);
                 if (query_param->len == 2000) { /* for kakadu client*/
-                    strncpy(query_param->box_type[0], "ftyp", 4);
+                    memcpy(query_param->box_type[0], "ftyp", 4);
                 }
             }
         }
@@ -208,31 +248,70 @@ query_param_t * get_initquery(void)
 }
 
 
-char * get_fieldparam(const char *stringptr, char *fieldname, char *fieldval)
+/**
+ * get a pair of field name and value from the string starting
+ * fieldname=fieldval&... format
+ *
+ * Lengths are validated against the actual remaining capacity of the caller
+ * buffers BEFORE any byte is copied, so an overlong field can never overflow
+ * the stack buffers.
+ *
+ * @param[in]  stringptr     pointer to the beginning of the parsing string
+ * @param[out] fieldname     buffer to copy the field name
+ * @param[in]  fieldname_sz  size of the fieldname buffer (including the
+ *                           trailing NUL)
+ * @param[out] fieldval      buffer to copy the field value
+ * @param[in]  fieldval_sz   size of the fieldval buffer (including the
+ *                           trailing NUL)
+ * @param[out] nextptr       pointer to the next field string, NULL if there is
+ *                           none
+ * @return QUERY_PARSE_OK on success, QUERY_PARSE_FORMAT_ERROR if the field is
+ *         not well formed, QUERY_PARSE_LENGTH_ERROR if a field exceeds its
+ *         buffer capacity
+ */
+static int get_fieldparam_safe(const char *stringptr, char *fieldname,
+                               size_t fieldname_sz, char *fieldval,
+                               size_t fieldval_sz, char **nextptr)
 {
-    char *eqp, *andp, *nexfieldptr;
+    const char *eqp, *andp;
+    size_t name_len, val_len;
+
+    *nextptr = NULL;
 
     if ((eqp = strchr(stringptr, '=')) == NULL) {
         fprintf(stderr, "= not found\n");
-        strcpy(fieldname, "");
-        strcpy(fieldval, "");
-        return NULL;
+        return QUERY_PARSE_FORMAT_ERROR;
     }
     if ((andp = strchr(stringptr, '&')) == NULL) {
         andp = strchr(stringptr, '\0');
-        nexfieldptr = NULL;
     } else {
-        nexfieldptr = andp + 1;
+        *nextptr = (char *)(andp + 1);
     }
 
-    assert((size_t)(eqp - stringptr));
-    strncpy(fieldname, stringptr, (size_t)(eqp - stringptr));
-    fieldname[eqp - stringptr] = '\0';
-    assert(andp - eqp - 1 >= 0);
-    strncpy(fieldval, eqp + 1, (size_t)(andp - eqp - 1));
-    fieldval[andp - eqp - 1] = '\0';
+    /* A '&' located before the '=' belongs to a previous malformed field:
+     * there is no valid name/value pair in this segment. */
+    if (andp < eqp) {
+        return QUERY_PARSE_FORMAT_ERROR;
+    }
 
-    return nexfieldptr;
+    name_len = (size_t)(eqp - stringptr);
+    val_len = (size_t)(andp - eqp - 1);
+
+    if (name_len == 0) {
+        return QUERY_PARSE_FORMAT_ERROR;
+    }
+
+    /* Validate against the remaining buffer capacity before copying. */
+    if (name_len >= fieldname_sz || val_len >= fieldval_sz) {
+        return QUERY_PARSE_LENGTH_ERROR;
+    }
+
+    memcpy(fieldname, stringptr, name_len);
+    fieldname[name_len] = '\0';
+    memcpy(fieldval, eqp + 1, val_len);
+    fieldval[val_len] = '\0';
+
+    return QUERY_PARSE_OK;
 }
 
 void print_queryparam(query_param_t query_param)
@@ -298,13 +377,22 @@ void print_queryparam(query_param_t query_param)
     fprintf(logstream, "\t len:  %d\n", query_param.len);
 }
 
-void parse_cclose(char *src, query_param_t *query_param)
+OPJ_BOOL parse_cclose(char *src, query_param_t *query_param)
 {
     size_t i;
     size_t len;
 
+    if (src == NULL || src[0] == '\0') {
+        fprintf(stderr, "Malformed JPIP query: empty cclose field\n");
+        return OPJ_FALSE;
+    }
+
     len = strlen(src);
     query_param->cclose = strdup(src);
+    if (query_param->cclose == NULL) {
+        fprintf(stderr, "Memory allocation failed while parsing cclose\n");
+        return OPJ_FALSE;
+    }
 
     for (i = 0; i < len; i++)
         if (query_param->cclose[i] == ',') {
@@ -313,36 +401,81 @@ void parse_cclose(char *src, query_param_t *query_param)
         }
 
     query_param->numOfcclose ++;
+    return OPJ_TRUE;
 }
 
 void parse_req_box_prop(char *req_box_prop, int idx,
                         query_param_t *query_param);
 
-void parse_metareq(char *field, query_param_t *query_param)
+/** length of the temporary per-property token in a metareq field */
+#define MAX_LENOFREOBOXPROP 19
+
+OPJ_BOOL parse_metareq(char *field, query_param_t *query_param)
 {
-    char req_box_prop[20];
+    char req_box_prop[MAX_LENOFREOBOXPROP + 1];
     char *ptr, *src;
     int numofboxreq = 0;
 
-    memset(req_box_prop, 0, 20);
+    memset(req_box_prop, 0, sizeof(req_box_prop));
 
     /* req-box-prop*/
     ptr = strchr(field, '[');
+    if (ptr == NULL) {
+        fprintf(stderr,
+                "Malformed JPIP query: metareq field missing '[' marker\n");
+        return OPJ_FALSE;
+    }
     ptr++;
     src = ptr;
-    while (*ptr != ']') {
+    while (*ptr != '\0' && *ptr != ']') {
         if (*ptr == ';') {
-            assert(ptr - src >= 0);
-            strncpy(req_box_prop, src, (size_t)(ptr - src));
+            size_t prop_len = (size_t)(ptr - src);
+
+            if (numofboxreq >= MAX_NUMOFBOX) {
+                fprintf(stderr,
+                        "JPIP query rejected: metareq field contains more "
+                        "than %d box requests\n", MAX_NUMOFBOX);
+                return OPJ_FALSE;
+            }
+            if (prop_len >= sizeof(req_box_prop)) {
+                fprintf(stderr,
+                        "JPIP query rejected: metareq box property exceeds "
+                        "maximum length (%d)\n", MAX_LENOFREOBOXPROP);
+                return OPJ_FALSE;
+            }
+            memcpy(req_box_prop, src, prop_len);
+            req_box_prop[prop_len] = '\0';
             parse_req_box_prop(req_box_prop, numofboxreq++, query_param);
             ptr++;
             src = ptr;
-            memset(req_box_prop, 0, 20);
+            memset(req_box_prop, 0, sizeof(req_box_prop));
         }
         ptr++;
     }
-    assert(ptr - src >= 0);
-    strncpy(req_box_prop, src, (size_t)(ptr - src));
+
+    if (*ptr != ']') {
+        fprintf(stderr,
+                "Malformed JPIP query: metareq field missing ']' marker\n");
+        return OPJ_FALSE;
+    }
+    {
+        size_t prop_len = (size_t)(ptr - src);
+
+        if (numofboxreq >= MAX_NUMOFBOX) {
+            fprintf(stderr,
+                    "JPIP query rejected: metareq field contains more than "
+                    "%d box requests\n", MAX_NUMOFBOX);
+            return OPJ_FALSE;
+        }
+        if (prop_len >= sizeof(req_box_prop)) {
+            fprintf(stderr,
+                    "JPIP query rejected: metareq box property exceeds "
+                    "maximum length (%d)\n", MAX_LENOFREOBOXPROP);
+            return OPJ_FALSE;
+        }
+        memcpy(req_box_prop, src, prop_len);
+        req_box_prop[prop_len] = '\0';
+    }
 
     parse_req_box_prop(req_box_prop, numofboxreq++, query_param);
 
@@ -357,16 +490,42 @@ void parse_metareq(char *field, query_param_t *query_param)
     if ((ptr = strstr(field, "!!"))) {
         query_param->metadata_only = OPJ_TRUE;
     }
+
+    return OPJ_TRUE;
 }
 
 void parse_req_box_prop(char *req_box_prop, int idx, query_param_t *query_param)
 {
     char *ptr;
 
+    if (idx < 0 || idx >= MAX_NUMOFBOX) {
+        fprintf(stderr,
+                "JPIP query rejected: metareq box index %d out of range\n",
+                idx);
+        return;
+    }
+
     if (*req_box_prop == '*') {
         query_param->box_type[idx][0] = '*';
+        query_param->box_type[idx][1] = '\0';
     } else {
-        strncpy(query_param->box_type[idx], req_box_prop, 4);
+        /* box_type is a fixed 4-byte fourcc field, historically filled with
+         * strncpy(..., 4) and not NUL terminated. Accept up to 4 bytes and
+         * only reject when the box name runs past the field without a
+         * qualifier separator, which is what would have overflowed. */
+        size_t type_len = strcspn(req_box_prop, ":/!");
+        if (type_len > sizeof(query_param->box_type[idx])) {
+            fprintf(stderr,
+                    "JPIP query rejected: metareq box type exceeds maximum "
+                    "length (%u)\n",
+                    (unsigned)(sizeof(query_param->box_type[idx]) - 1));
+            return;
+        }
+        memset(query_param->box_type[idx], 0,
+               sizeof(query_param->box_type[idx]));
+        memcpy(query_param->box_type[idx], req_box_prop,
+               type_len <= sizeof(query_param->box_type[idx]) ?
+               type_len : sizeof(query_param->box_type[idx]));
     }
 
     if ((ptr = strchr(req_box_prop, ':'))) {
@@ -409,33 +568,79 @@ void parse_req_box_prop(char *req_box_prop, int idx, query_param_t *query_param)
     idx++;
 }
 
-void parse_comps(char *field, query_param_t *query_param)
+OPJ_BOOL parse_comps(char *field, query_param_t *query_param)
 {
-    int i, start, stop, aux = -1;
+    int i, start = 0, stop = 0, aux = -1;
+    int matched;
     char *ptr1, *ptr2;
+
+    if (field == NULL || field[0] == '\0') {
+        fprintf(stderr, "Malformed JPIP query: empty comps field\n");
+        return OPJ_FALSE;
+    }
 
     ptr1 = strchr(field, '-');
     ptr2 = strchr(field, ',');
 
     if (ptr1 && ptr2)
         if (ptr1 > ptr2) {
-            sscanf(field, "%d,%d-%d", &aux, &start, &stop);
+            matched = sscanf(field, "%d,%d-%d", &aux, &start, &stop);
+            if (matched != 3) {
+                fprintf(stderr,
+                        "Malformed JPIP query: comps field is not numeric\n");
+                return OPJ_FALSE;
+            }
         } else {
-            sscanf(field, "%d-%d,%d", &start, &stop, &aux);
+            matched = sscanf(field, "%d-%d,%d", &start, &stop, &aux);
+            if (matched != 3) {
+                fprintf(stderr,
+                        "Malformed JPIP query: comps field is not numeric\n");
+                return OPJ_FALSE;
+            }
         } else if (ptr1) {
-        sscanf(field, "%d-%d", &start, &stop);
+        if (sscanf(field, "%d-%d", &start, &stop) != 2) {
+            fprintf(stderr,
+                    "Malformed JPIP query: comps field is not numeric\n");
+            return OPJ_FALSE;
+        }
     } else if (ptr2) {
-        sscanf(field, "%d,%d", &start, &stop);
+        if (sscanf(field, "%d,%d", &start, &stop) != 2) {
+            fprintf(stderr,
+                    "Malformed JPIP query: comps field is not numeric\n");
+            return OPJ_FALSE;
+        }
         aux = start;
         start = stop;
     } else {
-        sscanf(field, "%d", &stop);
+        if (sscanf(field, "%d", &stop) != 1) {
+            fprintf(stderr,
+                    "Malformed JPIP query: comps field is not numeric\n");
+            return OPJ_FALSE;
+        }
         start = stop;
+    }
+
+    if (start < 0 || stop < 0 || start > stop || aux < -1) {
+        fprintf(stderr,
+                "Malformed JPIP query: invalid component range in comps field\n");
+        return OPJ_FALSE;
+    }
+
+    if (aux != -1 && aux < 0) {
+        fprintf(stderr,
+                "Malformed JPIP query: invalid component index in comps field\n");
+        return OPJ_FALSE;
     }
 
     query_param->lastcomp = stop > aux ? stop : aux;
     query_param->comps = (OPJ_BOOL *)opj_calloc(1,
                          (OPJ_SIZE_T)(query_param->lastcomp + 1) * sizeof(OPJ_BOOL));
+    if (query_param->comps == NULL) {
+        fprintf(stderr,
+                "Memory allocation failed while parsing comps field\n");
+        query_param->lastcomp = -1;
+        return OPJ_FALSE;
+    }
 
     for (i = start; i <= stop; i++) {
         query_param->comps[i] = OPJ_TRUE;
@@ -444,10 +649,16 @@ void parse_comps(char *field, query_param_t *query_param)
     if (aux != -1) {
         query_param->comps[aux] = OPJ_TRUE;
     }
+
+    return OPJ_TRUE;
 }
 
 void delete_query(query_param_t **query)
 {
+    if (query == NULL || *query == NULL) {
+        return;
+    }
+
     if ((*query)->target) {
         opj_free((*query)->target);
     }

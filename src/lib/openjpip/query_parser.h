@@ -37,6 +37,12 @@
 /** maximum number of meta request box */
 #define MAX_NUMOFBOX 10
 
+/** maximum length of a query field name (without the trailing NUL) */
+#define MAX_LENOFFIELDNAME 10
+
+/** maximum length of a query field value (without the trailing NUL) */
+#define MAX_LENOFFIELDVAL 128
+
 /** cnew aux transport name */
 typedef enum cnew_transport { non, http, tcp, udp} cnew_transport_t;
 

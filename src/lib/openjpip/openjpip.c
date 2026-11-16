@@ -81,6 +81,10 @@ QR_t * parse_querystring(const char *query_string)
     QR_t *qr;
 
     qr = (QR_t *)opj_malloc(sizeof(QR_t));
+    if (qr == NULL) {
+        fprintf(FCGI_stderr, "Error: not enough memory for JPIP request\n");
+        return NULL;
+    }
 
     qr->query = parse_query(query_string);
     qr->msgqueue = NULL;
@@ -94,6 +98,13 @@ OPJ_BOOL process_JPIPrequest(server_record_t *rec, QR_t *qr)
     target_param_t *target = NULL;
     session_param_t *cursession = NULL;
     channel_param_t *curchannel = NULL;
+
+    if (qr == NULL || qr->query == NULL) {
+        fprintf(FCGI_stderr,
+                "Error: JPIP request rejected before processing (malformed or "
+                "oversized query)\n");
+        return OPJ_FALSE;
+    }
 
     if (qr->query->target || qr->query->tid) {
         if (!identify_target(*(qr->query), rec->targetlist, &target)) {
@@ -206,7 +217,7 @@ void end_QRprocess(server_record_t *rec, QR_t **qr)
 void local_log(OPJ_BOOL query, OPJ_BOOL messages, OPJ_BOOL sessions,
                OPJ_BOOL targets, QR_t *qr, server_record_t *rec)
 {
-    if (query) {
+    if (query && qr != NULL && qr->query != NULL) {
         print_queryparam(*qr->query);
     }
 

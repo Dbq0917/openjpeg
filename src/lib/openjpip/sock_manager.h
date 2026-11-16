@@ -64,7 +64,15 @@ SOCKET accept_socket(SOCKET listening_socket);
  *
  * @param [in]  connected_socket file descriptor of the connected socket
  * @param [out] buf              string to be stored
- * @return                       red size
+ * @param [in]  buf_size         total size of buf, including the trailing NUL
+ * @return                       red size (0 on error or line too long)
+ */
+OPJ_SIZE_T receive_line_bounded(SOCKET connected_socket, char *buf,
+                                OPJ_SIZE_T buf_size);
+
+/**
+ * receive a string line (ending with '\n') from client into a BUF_LEN buffer.
+ * Kept for API compatibility; internally bounded to BUF_LEN bytes.
  */
 OPJ_SIZE_T receive_line(SOCKET connected_socket, char *buf);
 

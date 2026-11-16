@@ -99,6 +99,18 @@ int main(void)
 
         qr = parse_querystring(query_string);
 
+        if (qr == NULL || qr->query == NULL) {
+            /* Rejected at parse time: malformed syntax or an overlong field.
+             * No bounded buffer was touched, so the process stays alive. */
+            fprintf(FCGI_stderr,
+                    "Error: JPIP request rejected during query parsing\n");
+            fprintf(FCGI_stdout, "\r\n");
+            if (qr != NULL) {
+                end_QRprocess(server_record, &qr);
+            }
+            continue;
+        }
+
         parse_status = process_JPIPrequest(server_record, qr);
 
 #ifndef SERVER

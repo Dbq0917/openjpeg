@@ -43,6 +43,8 @@ typedef SSIZE_T ssize_t;
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <inttypes.h>
 #include "sock_manager.h"
 
 #ifdef SERVER
@@ -139,9 +141,15 @@ void * receive_stream(SOCKET connected_socket, OPJ_SIZE_T length)
     return stream;
 }
 
-OPJ_SIZE_T receive_line(SOCKET connected_socket, char *p)
+OPJ_SIZE_T receive_line_bounded(SOCKET connected_socket, char *p,
+                                OPJ_SIZE_T buf_size)
 {
     OPJ_SIZE_T len = 0;
+
+    if (p == NULL || buf_size == 0) {
+        return 0;
+    }
+
     while (1) {
         ssize_t ret;
         ret = recv(connected_socket, p, 1, 0);
@@ -153,6 +161,22 @@ OPJ_SIZE_T receive_line(SOCKET connected_socket, char *p)
         }
         if (*p == '\n') {
             break;
+        }
+        /* Reject before the write would exceed the caller's buffer. Stop
+         * reading the (still well delimited) line so the socket stream stays
+         * consistent and return 0 to signal the malformed/oversized header. */
+        if (len + 1 >= buf_size) {
+            char discard;
+            ssize_t c;
+            do {
+                c = recv(connected_socket, &discard, 1, 0);
+            } while (c > 0 && discard != '\n');
+            fprintf(FCGI_stderr,
+                    "Header line exceeds buffer capacity (%" PRIu64
+                    " bytes), request rejected\n",
+                    (uint64_t)buf_size);
+            p[0] = '\0';
+            return 0;
         }
         p++;
         len++;
@@ -166,13 +190,19 @@ OPJ_SIZE_T receive_line(SOCKET connected_socket, char *p)
     return len;
 }
 
+OPJ_SIZE_T receive_line(SOCKET connected_socket, char *buf)
+{
+    return receive_line_bounded(connected_socket, buf, (OPJ_SIZE_T)BUF_LEN);
+}
+
 char * receive_string(SOCKET connected_socket)
 {
     char buf[BUF_LEN];
 
-    /* MM FIXME: there is a nasty bug here, size of buf if BUF_LEN which is never
-    indicated to downstream receive_line */
-    receive_line(connected_socket, buf);
+    /* The bounded reader now enforces the real size of buf. */
+    if (receive_line_bounded(connected_socket, buf, (OPJ_SIZE_T)BUF_LEN) == 0) {
+        return NULL;
+    }
 
     return strdup(buf);
 }
