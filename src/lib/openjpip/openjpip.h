@@ -79,6 +79,8 @@ typedef struct QR {
     query_param_t *query;             /**< query parameters*/
     msgqueue_param_t *msgqueue;       /**< message queue*/
     channel_param_t *channel;         /**< channel, (NULL if stateless)*/
+    query_error_t parse_error;        /**< first parse error, type QERR_NONE
+                                           when the query string was valid*/
 } QR_t;
 
 /**

@@ -32,9 +32,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "channel_manager.h"
-#ifdef _WIN32
-#define snprintf _snprintf /* Visual Studio */
-#endif
+#include "string_compat.h"
 
 #ifdef SERVER
 #include "fcgi_stdio.h"
@@ -74,8 +72,12 @@ channel_param_t * gene_channel(query_param_t query_param,
     channel->cachemodel = cachemodel;
 
     /* set channel ID and get present time */
-    snprintf(channel->cid, MAX_LENOFCID, "%x%x",
-             (unsigned int)time(&channel->start_tm), (unsigned int)rand());
+    if (!opj_snprintf(channel->cid, (size_t)MAX_LENOFCID, "cid", "%x%x",
+                      (unsigned int)time(&channel->start_tm),
+                      (unsigned int)rand())) {
+        opj_free(channel);
+        return NULL;
+    }
 
     channel->aux = query_param.cnew;
 

@@ -46,6 +46,7 @@ set(EXES
   opj_dec_server
   opj_jpip_transcode
   opj_jpip_test
+  opj_jpip_scan
   )
 foreach(exe ${EXES})
 add_executable(${exe} ${exe}.c)

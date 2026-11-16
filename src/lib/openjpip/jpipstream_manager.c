@@ -37,6 +37,7 @@
 #include "jp2k_decoder.h"
 #include "ihdrbox_manager.h"
 #include "j2kheader_manager.h"
+#include "string_compat.h"
 
 Byte_t * update_JPIPstream(Byte_t *newstream, OPJ_SIZE_T newstreamlen,
                            Byte_t *cache_stream, OPJ_SIZE_T *streamlen)
@@ -65,11 +66,21 @@ void save_codestream(Byte_t *codestream, OPJ_SIZE_T streamlen, const char *fmt)
     time(&timer);
     t_st = localtime(&timer);
 
-    sprintf(filename, "%4d%02d%02d%02d%02d%02d.%.3s", t_st->tm_year + 1900,
-            t_st->tm_mon + 1, t_st->tm_mday, t_st->tm_hour, t_st->tm_min, t_st->tm_sec,
-            fmt);
+    if (t_st == NULL || fmt == NULL ||
+            !opj_snprintf(filename, sizeof(filename), "codestream",
+                          "%04d%02d%02d%02d%02d%02d.%.3s",
+                          t_st->tm_year + 1900, t_st->tm_mon + 1,
+                          t_st->tm_mday, t_st->tm_hour, t_st->tm_min,
+                          t_st->tm_sec, fmt)) {
+        fprintf(stderr, "Error: failed to build codestream file name\n");
+        return;
+    }
 
     fp = fopen(filename, "wb");
+    if (fp == NULL) {
+        fprintf(stderr, "Error: failed to open codestream file %s\n", filename);
+        return;
+    }
     if (fwrite(codestream, streamlen, 1, fp) != 1) {
         fprintf(stderr, "Error: failed to write codestream to file %s\n", filename);
     }

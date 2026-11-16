@@ -43,6 +43,22 @@ typedef int SOCKET;
 #define BUF_LEN 256
 
 /**
+ * receive a string line (ending with '\n') from client with a bounded buffer
+ *
+ * Reads at most buf_size - 1 bytes into @p buf and always NUL-terminates it.
+ * If the line is longer than the buffer, the trailing bytes up to '\n' are
+ * drained and an error is returned instead of overflowing the buffer.
+ *
+ * @param [in]  connected_socket file descriptor of the connected socket
+ * @param [out] buf              string to be stored
+ * @param [in]  buf_size         total size of buf in bytes
+ * @return                       red size, (OPJ_SIZE_T)-1 if the line did not
+ *                               fit in the buffer or the socket failed
+ */
+OPJ_SIZE_T receive_line_safe(SOCKET connected_socket, char *buf,
+                             size_t buf_size);
+
+/**
  * open listening socket
  *
  * @param  port opening port number

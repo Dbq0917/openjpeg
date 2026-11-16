@@ -33,7 +33,6 @@
 #include <stdio.h>
 #include <assert.h>
 #ifdef _WIN32
-#define snprintf _snprintf /* Visual Studio */
 #include <io.h>
 #else
 #include <sys/types.h>
@@ -43,6 +42,7 @@
 #include <fcntl.h>
 #include <time.h>
 #include "target_manager.h"
+#include "string_compat.h"
 
 #ifdef SERVER
 #include <curl/curl.h>
@@ -100,8 +100,11 @@ target_param_t * gene_target(targetlist_param_t *targetlist, char *targetpath)
     }
 
     target = (target_param_t *)opj_malloc(sizeof(target_param_t));
-    snprintf(target->tid, MAX_LENOFTID, "%x-%x", (unsigned int)time(NULL),
-             (unsigned int)rand());
+    if (!opj_snprintf(target->tid, (size_t)MAX_LENOFTID, "tid", "%x-%x",
+                      (unsigned int)time(NULL), (unsigned int)rand())) {
+        opj_free(target);
+        return NULL;
+    }
     target->targetname = strdup(targetpath);
     target->fd = fd;
 #ifdef SERVER
@@ -329,8 +332,12 @@ int open_remotefile(const char filepath[], char tmpfname[])
     curl_easy_setopt(curl_handle, CURLOPT_NOPROGRESS, 1L);
     curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION, write_data);
 
-    snprintf(tmpfname, MAX_LENOFTID, "%x-%x.jp2", (unsigned int)time(NULL),
-             (unsigned int)rand());
+    if (!opj_snprintf(tmpfname, (size_t)MAX_LENOFTID, "tmpfname",
+                      "%x-%x.jp2", (unsigned int)time(NULL),
+                      (unsigned int)rand())) {
+        curl_easy_cleanup(curl_handle);
+        return -1;
+    }
     fprintf(FCGI_stderr, "%s is downloaded to a temporal new file %s\n", filepath,
             tmpfname);
     if ((fd = open(tmpfname, O_RDWR | O_CREAT | O_EXCL, S_IRWXU)) == -1) {

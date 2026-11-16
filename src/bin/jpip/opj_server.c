@@ -99,6 +99,22 @@ int main(void)
 
         qr = parse_querystring(query_string);
 
+        if (qr->parse_error.type != QERR_NONE) {
+            fprintf(FCGI_stderr,
+                    "Error: rejected query with field '%s' (%s): %u byte(s) "
+                    "required, %u available\n",
+                    qr->parse_error.field[0] ? qr->parse_error.field : "(unknown)",
+                    query_error_type_name[qr->parse_error.type],
+                    (unsigned)qr->parse_error.required,
+                    (unsigned)qr->parse_error.capacity);
+            fprintf(FCGI_stdout, "Status: 400\r\n");
+            fprintf(FCGI_stdout,
+                    "Reason: malformed or overlong query field '%s'\r\n",
+                    qr->parse_error.field[0] ? qr->parse_error.field : "(unknown)");
+            end_QRprocess(server_record, &qr);
+            continue;
+        }
+
         parse_status = process_JPIPrequest(server_record, qr);
 
 #ifndef SERVER

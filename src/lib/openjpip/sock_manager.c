@@ -139,25 +139,51 @@ void * receive_stream(SOCKET connected_socket, OPJ_SIZE_T length)
     return stream;
 }
 
-OPJ_SIZE_T receive_line(SOCKET connected_socket, char *p)
+OPJ_SIZE_T receive_line_safe(SOCKET connected_socket, char *p, size_t buf_size)
 {
     OPJ_SIZE_T len = 0;
+    OPJ_BOOL overflow = OPJ_FALSE;
+
+    if (p == NULL || buf_size == 0U) {
+        return (OPJ_SIZE_T)-1;
+    }
+
     while (1) {
         ssize_t ret;
-        ret = recv(connected_socket, p, 1, 0);
+        char ch;
+        ret = recv(connected_socket, &ch, 1, 0);
         if (ret == -1) {
             perror("receive");
-            exit(1);
+            return (OPJ_SIZE_T)-1;
         } else if (ret == 0) {
             break;
         }
-        if (*p == '\n') {
+        if (ch == '\n') {
             break;
         }
-        p++;
+        if (len + 1U >= buf_size) {
+            /* drain the remainder of the line so the next read stays
+             * synchronized, then report the overflow to the caller */
+            overflow = OPJ_TRUE;
+            do {
+                ret = recv(connected_socket, &ch, 1, 0);
+                if (ret <= 0) {
+                    break;
+                }
+            } while (ch != '\n');
+            break;
+        }
+        *p++ = ch;
         len++;
     }
     *p = '\0';
+
+    if (overflow) {
+        fprintf(FCGI_stderr,
+                "Error: received line is too long: capacity %u bytes exceeded\n",
+                (unsigned)buf_size);
+        return (OPJ_SIZE_T)-1;
+    }
 
     if (len == 0) {
         fprintf(FCGI_stderr, "Header receive error\n");
@@ -166,13 +192,19 @@ OPJ_SIZE_T receive_line(SOCKET connected_socket, char *p)
     return len;
 }
 
+OPJ_SIZE_T receive_line(SOCKET connected_socket, char *buf)
+{
+    return receive_line_safe(connected_socket, buf, (size_t)BUF_LEN);
+}
+
 char * receive_string(SOCKET connected_socket)
 {
     char buf[BUF_LEN];
 
-    /* MM FIXME: there is a nasty bug here, size of buf if BUF_LEN which is never
-    indicated to downstream receive_line */
-    receive_line(connected_socket, buf);
+    if (receive_line_safe(connected_socket, buf, sizeof(buf)) ==
+            (OPJ_SIZE_T)-1) {
+        return NULL;
+    }
 
     return strdup(buf);
 }

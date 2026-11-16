@@ -13,6 +13,8 @@ include_directories(
 # Defines the source code for the library
 set(OPENJPIP_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/boxheader_manager.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/string_compat.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/parse_errorlog.c
   ${CMAKE_CURRENT_SOURCE_DIR}/codestream_manager.c
   ${CMAKE_CURRENT_SOURCE_DIR}/imgreg_manager.c
   ${CMAKE_CURRENT_SOURCE_DIR}/marker_manager.c

@@ -1,0 +1,43 @@
+Start testing: Nov 17 00:39 CST
+----------------------------------------------------------
+1336/1337 Testing: testjpip_query_parser
+1336/1337 Test: testjpip_query_parser
+Command: "/home/feedback/feedback/uidreczz28aGlOJPDJw/build_asan/bin/testjpip_query_parser"
+Directory: /home/feedback/feedback/uidreczz28aGlOJPDJw/build_asan/tests/unit
+"testjpip_query_parser" start time: Nov 17 00:39 CST
+Output:
+----------------------------------------------------------
+Error: field 'x' is too long: 9 byte(s) required but only 8 byte(s) available
+Error: field 'x' is too long: 9 byte(s) required but only 8 byte(s) available
+Error: field 'x' is too long: 9 byte(s) required but only 8 byte(s) available
+Error: field 'x' is too long: 7 byte(s) required but only 6 byte(s) available
+Error: invalid comps field '-5'
+Error: invalid comps field '0-2147483647'
+testjpip_query_parser: all checks passed
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"testjpip_query_parser" end time: Nov 17 00:39 CST
+"testjpip_query_parser" time elapsed: 00:00:00
+----------------------------------------------------------
+
+1337/1337 Testing: testjpip_sockline
+1337/1337 Test: testjpip_sockline
+Command: "/home/feedback/feedback/uidreczz28aGlOJPDJw/build_asan/bin/testjpip_sockline"
+Directory: /home/feedback/feedback/uidreczz28aGlOJPDJw/build_asan/tests/unit
+"testjpip_sockline" start time: Nov 17 00:39 CST
+Output:
+----------------------------------------------------------
+Error: received line is too long: capacity 256 bytes exceeded
+Error: received line is too long: capacity 256 bytes exceeded
+testjpip_sockline: all checks passed
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"testjpip_sockline" end time: Nov 17 00:39 CST
+"testjpip_sockline" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Nov 17 00:39 CST

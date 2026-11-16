@@ -1,0 +1,8 @@
+none=1
+malformed=0
+fieldname_too_long=0
+fieldval_too_long=2
+metareq_too_long=0
+too_many_boxes=0
+metareq_malformed=0
+comps_invalid=0

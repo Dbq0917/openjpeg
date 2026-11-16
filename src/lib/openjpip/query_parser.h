@@ -37,6 +37,49 @@
 /** maximum number of meta request box */
 #define MAX_NUMOFBOX 10
 
+/** maximum length (including the terminating NUL) of a query field name */
+#define MAX_LENOFFIELDNAME 11
+
+/** maximum length (including the terminating NUL) of a query field value */
+#define MAX_LENOFFIELDVAL 129
+
+/** maximum length (including the terminating NUL) of a single req-box-prop */
+#define MAX_LENOFREQBOXPROP 20
+
+/**
+ * Categories of parse errors.
+ * New values must only be appended so that persisted statistics keep their
+ * meaning across releases.
+ */
+typedef enum query_error_type {
+    QERR_NONE = 0,              /**< no error */
+    QERR_MALFORMED = 1,         /**< field is not of the name=value form */
+    QERR_FIELDNAME_TOO_LONG = 2,/**< field name exceeds MAX_LENOFFIELDNAME */
+    QERR_FIELDVAL_TOO_LONG = 3, /**< field value exceeds MAX_LENOFFIELDVAL */
+    QERR_METAREQ_TOO_LONG = 4,  /**< a req-box-prop exceeds its buffer */
+    QERR_TOO_MANY_BOXES = 5,    /**< more than MAX_NUMOFBOX boxes requested */
+    QERR_METAREQ_MALFORMED = 6, /**< metareq field has no closing bracket */
+    QERR_COMPS_INVALID = 7      /**< comps field has negative or out of range values */
+} query_error_type_t;
+
+/** Number of entries in query_error_type_t (QERR_NONE included) */
+#define QUERY_ERROR_TYPE_COUNT 8
+
+/** Short, stable names used when persisting error statistics */
+extern const char *const query_error_type_name[QUERY_ERROR_TYPE_COUNT];
+
+/**
+ * Parse error record. A parse run owns at most one active error: the first
+ * length violation or malformed field aborts parsing.
+ */
+typedef struct query_error {
+    query_error_type_t type;    /**< error category, QERR_NONE when clean */
+    char field[MAX_LENOFFIELDNAME]; /**< offending field name, empty when the
+                                         malformed input has no name */
+    size_t required;            /**< bytes required by the offending field */
+    size_t capacity;            /**< bytes available in the target buffer */
+} query_error_t;
+
 /** cnew aux transport name */
 typedef enum cnew_transport { non, http, tcp, udp} cnew_transport_t;
 
@@ -77,8 +120,27 @@ typedef struct query_param {
  *
  * @param[in]  query_string request query string
  * @return     pointer to query parameters
+ *
+ * Kept for backward compatibility. Prefer parse_query_ex() in new code so
+ * that overlong or malformed fields are reported rather than only logged.
  */
 query_param_t * parse_query(const char *query_string);
+
+/**
+ * parse query with explicit error reporting
+ *
+ * Every field copied into a fixed-size buffer is length-checked first. On the
+ * first violation parsing stops immediately, the error (including the
+ * offending field name and the required versus available lengths) is stored in
+ * @p error and the partially populated query parameters are returned for
+ * cleanup. Valid inputs produce exactly the same result as parse_query().
+ *
+ * @param[in]  query_string request query string
+ * @param[out] error        parse error record, reset to QERR_NONE on entry
+ * @return     pointer to query parameters (never NULL; caller must still run
+ *             delete_query() even when an error is reported)
+ */
+query_param_t * parse_query_ex(const char *query_string, query_error_t *error);
 
 /**
  * print query parameters

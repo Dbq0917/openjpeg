@@ -82,7 +82,7 @@ QR_t * parse_querystring(const char *query_string)
 
     qr = (QR_t *)opj_malloc(sizeof(QR_t));
 
-    qr->query = parse_query(query_string);
+    qr->query = parse_query_ex(query_string, &qr->parse_error);
     qr->msgqueue = NULL;
     qr->channel = NULL;
 

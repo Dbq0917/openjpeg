@@ -1,0 +1,61 @@
+-- The C compiler identification is GNU 15.2.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Looking for string.h
+-- Looking for string.h - found
+-- Looking for memory.h
+-- Looking for memory.h - found
+-- Looking for stdlib.h
+-- Looking for stdlib.h - found
+-- Looking for stdio.h
+-- Looking for stdio.h - found
+-- Looking for math.h
+-- Looking for math.h - found
+-- Looking for float.h
+-- Looking for float.h - found
+-- Looking for time.h
+-- Looking for time.h - found
+-- Looking for stdarg.h
+-- Looking for stdarg.h - found
+-- Looking for ctype.h
+-- Looking for ctype.h - found
+-- Looking for assert.h
+-- Looking for assert.h - found
+-- Looking for stdint.h
+-- Looking for stdint.h - found
+-- Looking for inttypes.h
+-- Looking for inttypes.h - found
+-- Looking for strings.h
+-- Looking for strings.h - found
+-- Looking for sys/stat.h
+-- Looking for sys/stat.h - found
+-- Looking for sys/types.h
+-- Looking for sys/types.h - found
+-- Looking for unistd.h
+-- Looking for unistd.h - found
+-- Checking for 64-bit off_t
+-- Checking for 64-bit off_t - present
+-- Checking for fseeko/ftello
+-- Checking for fseeko/ftello - present
+-- Large File support - found
+-- Looking for include file malloc.h
+-- Looking for include file malloc.h - found
+-- Looking for _aligned_malloc
+-- Looking for _aligned_malloc - not found
+-- Looking for posix_memalign
+-- Looking for posix_memalign - found
+-- Looking for memalign
+-- Looking for memalign - found
+-- Found CURL: /usr/lib/x86_64-linux-gnu/libcurl.so (found version "8.18.0")
+CMake Error at /usr/share/cmake-4.2/Modules/FindPackageHandleStandardArgs.cmake:290 (message):
+  Could NOT find FCGI (missing: FCGI_LIBRARY FCGI_INCLUDE_DIR)
+Call Stack (most recent call first):
+  /usr/share/cmake-4.2/Modules/FindPackageHandleStandardArgs.cmake:654 (_FPHSA_FAILURE_MESSAGE)
+  cmake/FindFCGI.cmake:9 (FIND_PACKAGE_HANDLE_STANDARD_ARGS)
+  CMakeLists.txt:218 (find_package)
+
+
+-- Configuring incomplete, errors occurred!
