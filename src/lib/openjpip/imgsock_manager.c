@@ -46,7 +46,15 @@ msgtype_t identify_clientmsg(SOCKET connected_socket)
                                    };
     int i;
 
-    receive_size = receive_line(connected_socket, buf);
+    receive_size = receive_line(connected_socket, buf, BUF_LEN);
+
+    if (receive_size == RECV_LINE_TOO_LONG) {
+        fprintf(stderr,
+                "Client message header exceeds %d bytes: request rejected\n",
+                BUF_LEN);
+        response_errorcode(connected_socket, (Byte_t)JPIP_RESPONSE_LINETOOLONG);
+        return MSGERROR;
+    }
 
     if (receive_size == 0) {
         fprintf(stderr, "Error to receive the header of client message\n");
@@ -65,7 +73,7 @@ msgtype_t identify_clientmsg(SOCKET connected_socket)
 }
 
 Byte_t * receive_JPIPstream(SOCKET connected_socket, char **target, char **tid,
-                            char **cid, OPJ_SIZE_T *streamlen)
+                            char **cid, OPJ_SIZE_T *streamlen, OPJ_BOOL *toolong)
 {
     char buf[BUF_LEN];
     const char versionstring[] = "version 1.2";
@@ -74,8 +82,14 @@ Byte_t * receive_JPIPstream(SOCKET connected_socket, char **target, char **tid,
     Byte_t *jpipstream;
 
     *target = *cid = *tid = NULL;
+    *toolong = OPJ_FALSE;
 
-    if ((linelen = receive_line(connected_socket, buf)) == 0) {
+    linelen = receive_line(connected_socket, buf, BUF_LEN);
+    if (linelen == RECV_LINE_TOO_LONG) {
+        *toolong = OPJ_TRUE;
+        return NULL;
+    }
+    if (linelen == 0) {
         return NULL;
     }
     if (strncmp(versionstring, buf, strlen(versionstring)) != 0) {
@@ -83,7 +97,12 @@ Byte_t * receive_JPIPstream(SOCKET connected_socket, char **target, char **tid,
         return NULL;
     }
 
-    if ((linelen = receive_line(connected_socket, buf)) == 0) {
+    linelen = receive_line(connected_socket, buf, BUF_LEN);
+    if (linelen == RECV_LINE_TOO_LONG) {
+        *toolong = OPJ_TRUE;
+        return NULL;
+    }
+    if (linelen == 0) {
         return NULL;
     }
 
@@ -91,21 +110,36 @@ Byte_t * receive_JPIPstream(SOCKET connected_socket, char **target, char **tid,
         /* register cid option*/
         *target = strdup(buf);
 
-        if ((linelen = receive_line(connected_socket, buf)) == 0) {
+        linelen = receive_line(connected_socket, buf, BUF_LEN);
+        if (linelen == RECV_LINE_TOO_LONG) {
+            *toolong = OPJ_TRUE;
+            return NULL;
+        }
+        if (linelen == 0) {
             return NULL;
         }
         if (strcmp(buf, "0") != 0) {
             *tid = strdup(buf);
         }
 
-        if ((linelen = receive_line(connected_socket, buf)) == 0) {
+        linelen = receive_line(connected_socket, buf, BUF_LEN);
+        if (linelen == RECV_LINE_TOO_LONG) {
+            *toolong = OPJ_TRUE;
+            return NULL;
+        }
+        if (linelen == 0) {
             return NULL;
         }
         if (strcmp(buf, "0") != 0) {
             *cid = strdup(buf);
         }
 
-        if ((linelen = receive_line(connected_socket, buf)) == 0) {
+        linelen = receive_line(connected_socket, buf, BUF_LEN);
+        if (linelen == RECV_LINE_TOO_LONG) {
+            *toolong = OPJ_TRUE;
+            return NULL;
+        }
+        if (linelen == 0) {
             return NULL;
         }
     }
@@ -119,10 +153,14 @@ Byte_t * receive_JPIPstream(SOCKET connected_socket, char **target, char **tid,
     fprintf(stdout, "Receive Data: %lu Bytes\n", datalen);
 
     jpipstream = receive_stream(connected_socket, datalen);
+    if (jpipstream == NULL) {
+        return NULL;
+    }
 
     /* check EOR*/
-    if (jpipstream[datalen - 3] == 0x00 && (jpipstream[datalen - 2] == 0x01 ||
-                                            jpipstream[datalen - 2] == 0x02)) {
+    if (datalen >= 3 && jpipstream[datalen - 3] == 0x00 &&
+            (jpipstream[datalen - 2] == 0x01 ||
+             jpipstream[datalen - 2] == 0x02)) {
         *streamlen = datalen - 3;
     } else {
         *streamlen = datalen;
@@ -213,13 +251,11 @@ void send_SIZstream(SOCKET connected_socket, unsigned int width,
 
 void response_signal(SOCKET connected_socket, OPJ_BOOL succeed)
 {
-    Byte_t code;
+    response_errorcode(connected_socket,
+                       (Byte_t)(succeed ? JPIP_RESPONSE_OK : JPIP_RESPONSE_FAIL));
+}
 
-    if (succeed) {
-        code = 1;
-    } else {
-        code = 0;
-    }
-
+void response_errorcode(SOCKET connected_socket, Byte_t code)
+{
     send_stream(connected_socket, &code, 1);
 }

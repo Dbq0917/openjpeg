@@ -90,5 +90,21 @@
  *
  *  \image html jpip_protocol.png "Message Sequence Chart of OpenJPIP implementation"
  *
+ * \section decserverproto Image decoding Server protocol: response codes and request limits
+ * The Image decoding Server (opj_dec_server) parses every newline-terminated
+ * request line through a single length-checked entry point.\n
+ * A request line may carry at most 255 characters (BUF_LEN-1).  A longer line
+ * is truncated, the request is rejected, and the rejection is logged on
+ * stderr ("request line exceeds ... bytes").\n
+ * The server answers each request with an explicit 1-byte response code:\n
+ * - 1 (JPIP_RESPONSE_OK): request processed successfully
+ * - 0 (JPIP_RESPONSE_FAIL): request failed (malformed message or processing error)
+ * - 2 (JPIP_RESPONSE_LINETOOLONG): request rejected, a line exceeds the maximum length
+ *
+ * A rejected request does not affect the server: it keeps accepting new
+ * connections and subsequent requests are parsed normally.\n
+ * Clients receiving code 2 must treat the request as rejected by the server,
+ * not as a network error.
+ *
  * \author Kaori Hagihara UCL/SST/ICTM/ELEN
  */

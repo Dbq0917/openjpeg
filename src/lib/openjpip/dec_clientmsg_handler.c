@@ -39,17 +39,36 @@
 #include "jpipstream_manager.h"
 #include "jp2k_encoder.h"
 
+/* reject a request whose line exceeds BUF_LEN with an explicit error code */
+static void reject_toolong_request(SOCKET connected_socket, const char *msgtype)
+{
+    fprintf(stderr, "%s rejected: request line exceeds %d bytes\n", msgtype,
+            BUF_LEN);
+    response_errorcode(connected_socket, (Byte_t)JPIP_RESPONSE_LINETOOLONG);
+}
+
 void handle_JPIPstreamMSG(SOCKET connected_socket, cachelist_param_t *cachelist,
                           Byte_t **jpipstream, OPJ_SIZE_T *streamlen, msgqueue_param_t *msgqueue)
 {
     Byte_t *newjpipstream;
     OPJ_SIZE_T newstreamlen = 0;
+    OPJ_BOOL toolong = OPJ_FALSE;
     cache_param_t *cache;
     char *target, *tid, *cid;
     metadatalist_param_t *metadatalist;
 
     newjpipstream = receive_JPIPstream(connected_socket, &target, &tid, &cid,
-                                       &newstreamlen);
+                                       &newstreamlen, &toolong);
+
+    if (newjpipstream == NULL) {
+        if (toolong) {
+            reject_toolong_request(connected_socket, "JPIP-stream message");
+        } else {
+            fprintf(stderr, "Error: malformed JPIP-stream message received\n");
+            response_errorcode(connected_socket, (Byte_t)JPIP_RESPONSE_FAIL);
+        }
+        return;
+    }
 
     fprintf(stderr, "newjpipstream length: %" PRIu64 "\n", newstreamlen);
 
@@ -110,6 +129,10 @@ void handle_PNMreqMSG(SOCKET connected_socket, Byte_t *jpipstream,
     int maxval;
 
     CIDorTID = receive_string(connected_socket);
+    if (CIDorTID == NULL) {
+        reject_toolong_request(connected_socket, "PNM request");
+        return;
+    }
 
     if (!(cache = search_cacheBycid(CIDorTID, cachelist)))
         if (!(cache = search_cacheBytid(CIDorTID, cachelist))) {
@@ -119,10 +142,18 @@ void handle_PNMreqMSG(SOCKET connected_socket, Byte_t *jpipstream,
 
     opj_free(CIDorTID);
 
-    receive_line(connected_socket, tmp);
+    if (receive_line(connected_socket, tmp, (OPJ_SIZE_T)sizeof(tmp)) ==
+            RECV_LINE_TOO_LONG) {
+        reject_toolong_request(connected_socket, "PNM request");
+        return;
+    }
     fw = atoi(tmp);
 
-    receive_line(connected_socket, tmp);
+    if (receive_line(connected_socket, tmp, (OPJ_SIZE_T)sizeof(tmp)) ==
+            RECV_LINE_TOO_LONG) {
+        reject_toolong_request(connected_socket, "PNM request");
+        return;
+    }
     fh = atoi(tmp);
 
     ihdrbox = NULL;
@@ -147,6 +178,10 @@ void handle_XMLreqMSG(SOCKET connected_socket, Byte_t *jpipstream,
     Byte_t *xmlstream;
 
     cid = receive_string(connected_socket);
+    if (cid == NULL) {
+        reject_toolong_request(connected_socket, "XML request");
+        return;
+    }
 
     if (!(cache = search_cacheBycid(cid, cachelist))) {
         opj_free(cid);
@@ -169,6 +204,10 @@ void handle_TIDreqMSG(SOCKET connected_socket, cachelist_param_t *cachelist)
     OPJ_SIZE_T tidlen = 0;
 
     target = receive_string(connected_socket);
+    if (target == NULL) {
+        reject_toolong_request(connected_socket, "TID request");
+        return;
+    }
     cache = search_cache(target, cachelist);
 
     opj_free(target);
@@ -187,6 +226,10 @@ void handle_CIDreqMSG(SOCKET connected_socket, cachelist_param_t *cachelist)
     OPJ_SIZE_T cidlen = 0;
 
     target = receive_string(connected_socket);
+    if (target == NULL) {
+        reject_toolong_request(connected_socket, "CID request");
+        return;
+    }
     cache = search_cache(target, cachelist);
 
     opj_free(target);
@@ -205,6 +248,10 @@ void handle_dstCIDreqMSG(SOCKET connected_socket, cachelist_param_t *cachelist)
     char *cid;
 
     cid = receive_string(connected_socket);
+    if (cid == NULL) {
+        reject_toolong_request(connected_socket, "CID destroy");
+        return;
+    }
     remove_cachecid(cid, cachelist);
     response_signal(connected_socket, OPJ_TRUE);
 
@@ -219,7 +266,16 @@ void handle_SIZreqMSG(SOCKET connected_socket, Byte_t *jpipstream,
     Byte4_t width, height;
 
     tid = receive_string(connected_socket);
+    if (tid == NULL) {
+        reject_toolong_request(connected_socket, "SIZ request");
+        return;
+    }
     cid = receive_string(connected_socket);
+    if (cid == NULL) {
+        opj_free(tid);
+        reject_toolong_request(connected_socket, "SIZ request");
+        return;
+    }
 
     cache = NULL;
 
@@ -256,6 +312,10 @@ void handle_JP2saveMSG(SOCKET connected_socket, cachelist_param_t *cachelist,
     Byte8_t jp2len;
 
     cid = receive_string(connected_socket);
+    if (cid == NULL) {
+        reject_toolong_request(connected_socket, "JP2 save");
+        return;
+    }
     if (!(cache = search_cacheBycid(cid, cachelist))) {
         opj_free(cid);
         return;

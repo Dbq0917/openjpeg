@@ -38,6 +38,11 @@
 #define NUM_OF_MSGTYPES 9
 typedef enum eMSGTYPE { JPIPSTREAM, PNMREQ, XMLREQ, TIDREQ, CIDREQ, CIDDST, SIZREQ, JP2SAVE, QUIT, MSGERROR} msgtype_t;
 
+/** 1-byte response codes sent back to the client by opj_dec_server */
+#define JPIP_RESPONSE_OK          1 /**< request processed successfully */
+#define JPIP_RESPONSE_FAIL        0 /**< request failed */
+#define JPIP_RESPONSE_LINETOOLONG 2 /**< request rejected: a line exceeds BUF_LEN */
+
 /**
  * indeitify client message type
  *
@@ -54,10 +59,11 @@ msgtype_t identify_clientmsg(SOCKET connected_socket);
  * @param [out] tid              address of received target identifier string pointer ( malloced, if not received, null string)
  * @param [out] cid              address of received channel identifier string pointer ( malloced, if not received, null string)
  * @param [out] streamlen        length of the received codestream
+ * @param [out] toolong          set to OPJ_TRUE if the message was rejected because a header line exceeds BUF_LEN
  * @return                       JPT- JPP- codestream
  */
 Byte_t * receive_JPIPstream(SOCKET connected_socket, char **target, char **tid,
-                            char **cid, OPJ_SIZE_T *streamlen);
+                            char **cid, OPJ_SIZE_T *streamlen, OPJ_BOOL *toolong);
 
 /**
  * send PGM/PPM image stream to the client
@@ -120,6 +126,14 @@ void send_SIZstream(SOCKET connected_socket, unsigned int width,
  */
 void response_signal(SOCKET connected_socket, OPJ_BOOL succeed);
 
+/**
+ * send an explicit 1-byte response code (JPIP_RESPONSE_*) to the client
+ *
+ * @param [in]  connected_socket file descriptor of the connected socket
+ * @param [in]  code             response code to send
+ */
+void response_errorcode(SOCKET connected_socket, Byte_t code);
+
 #endif /* !IMGSOCK_MANAGER_H_ */
 
 /*! \file
@@ -177,4 +191,19 @@ void response_signal(SOCKET connected_socket, OPJ_BOOL succeed);
  * Quit the opj_dec_server program
  *
  * client -> server: quit or QUIT
+ *
+ *\section sec10 Response codes and request limits
+ * Every newline-terminated request line is parsed through a single
+ * length-checked entry point (receive_line()).  A line may carry at most
+ * BUF_LEN-1 (255) characters; a longer line is truncated, the rest of the
+ * line is discarded to keep the connection in sync, and the request is
+ * rejected.
+ *
+ * The server answers with an explicit 1-byte response code:
+ * - 1 (JPIP_RESPONSE_OK):         request processed successfully
+ * - 0 (JPIP_RESPONSE_FAIL):       request failed (malformed message, processing error)
+ * - 2 (JPIP_RESPONSE_LINETOOLONG): request rejected, a line exceeds BUF_LEN
+ *
+ * A rejected request does not affect the server: it keeps accepting new
+ * connections, and subsequent requests are parsed normally.
  */

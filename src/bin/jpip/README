@@ -126,6 +126,24 @@ Client:
       quit
 
 ----------
+6. opj_dec_server response codes and request limits
+----------
+
+opj_dec_server answers each request with an explicit 1-byte response code:
+
+  1 (JPIP_RESPONSE_OK)          request processed successfully
+  0 (JPIP_RESPONSE_FAIL)        request failed (malformed message or processing error)
+  2 (JPIP_RESPONSE_LINETOOLONG) request rejected: a request line exceeds the
+                                maximum length (255 characters, BUF_LEN)
+
+Every newline-terminated request line (message header, target/tid/cid lines,
+frame size lines, ...) is parsed through a single length-checked entry point.
+A line longer than 255 characters is truncated and the request is rejected
+with code 2; the server logs "request line exceeds ... bytes" on stderr and
+keeps accepting new connections.  Clients receiving code 2 must treat the
+request as rejected by the server (not as a network error).
+
+----------
 5. JP2 encoding instructions
 ----------
 

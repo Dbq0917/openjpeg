@@ -1,0 +1,19 @@
+Start testing: Nov 17 14:18 CST
+----------------------------------------------------------
+28/1336 Testing: jpip_dec_server_reqline
+28/1336 Test: jpip_dec_server_reqline
+Command: "/usr/bin/python3" "/home/feedback/feedback/uidreczz28aGlOJMulF/tests/jpip_dec_server_test.py" "/home/feedback/feedback/uidreczz28aGlOJMulF/build/bin/opj_dec_server" "/home/feedback/feedback/uidreczz28aGlOJMulF/build/bin/opj_compress"
+Directory: /home/feedback/feedback/uidreczz28aGlOJMulF/build/tests
+"jpip_dec_server_reqline" start time: Nov 17 14:18 CST
+Output:
+----------------------------------------------------------
+ok: overlong request lines rejected with code 2, handshake and PNM fetch successful
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"jpip_dec_server_reqline" end time: Nov 17 14:18 CST
+"jpip_dec_server_reqline" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Nov 17 14:18 CST

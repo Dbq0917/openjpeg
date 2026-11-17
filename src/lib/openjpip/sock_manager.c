@@ -139,25 +139,44 @@ void * receive_stream(SOCKET connected_socket, OPJ_SIZE_T length)
     return stream;
 }
 
-OPJ_SIZE_T receive_line(SOCKET connected_socket, char *p)
+OPJ_SIZE_T receive_line(SOCKET connected_socket, char *p, OPJ_SIZE_T maxlen)
 {
     OPJ_SIZE_T len = 0;
+    OPJ_BOOL toolong = OPJ_FALSE;
+
+    if (maxlen == 0) {
+        return RECV_LINE_TOO_LONG;
+    }
+
     while (1) {
         ssize_t ret;
-        ret = recv(connected_socket, p, 1, 0);
+        char c;
+        ret = recv(connected_socket, &c, 1, 0);
         if (ret == -1) {
             perror("receive");
-            exit(1);
+            /* a broken client connection must not take the server down */
+            return 0;
         } else if (ret == 0) {
             break;
         }
-        if (*p == '\n') {
+        if (c == '\n') {
             break;
         }
-        p++;
-        len++;
+        if (len + 1 < maxlen) {
+            p[len++] = c;
+        } else {
+            /* discard the rest of the line to keep the stream in sync */
+            toolong = OPJ_TRUE;
+        }
     }
-    *p = '\0';
+    p[len] = '\0';
+
+    if (toolong) {
+        fprintf(FCGI_stderr,
+                "Error: received line exceeds the maximum length of %u bytes, line truncated and rejected\n",
+                (unsigned int)maxlen);
+        return RECV_LINE_TOO_LONG;
+    }
 
     if (len == 0) {
         fprintf(FCGI_stderr, "Header receive error\n");
@@ -170,9 +189,9 @@ char * receive_string(SOCKET connected_socket)
 {
     char buf[BUF_LEN];
 
-    /* MM FIXME: there is a nasty bug here, size of buf if BUF_LEN which is never
-    indicated to downstream receive_line */
-    receive_line(connected_socket, buf);
+    if (receive_line(connected_socket, buf, BUF_LEN) == RECV_LINE_TOO_LONG) {
+        return NULL;
+    }
 
     return strdup(buf);
 }

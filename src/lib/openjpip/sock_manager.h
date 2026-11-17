@@ -42,6 +42,10 @@ typedef int SOCKET;
 
 #define BUF_LEN 256
 
+/** receive_line() return value notifying that the received line exceeds
+ *  the buffer capacity (the line is truncated and must be rejected) */
+#define RECV_LINE_TOO_LONG ((OPJ_SIZE_T)-1)
+
 /**
  * open listening socket
  *
@@ -62,17 +66,27 @@ SOCKET accept_socket(SOCKET listening_socket);
 /**
  * receive a string line (ending with '\n') from client
  *
+ * Single entry point to parse newline-terminated request lines.
+ * At most maxlen-1 characters are stored into buf, followed by a NUL
+ * terminator.  If the received line is longer, the exceeding bytes are
+ * consumed and discarded (so the connection stays in sync for the next
+ * request) and RECV_LINE_TOO_LONG is returned: the caller must reject
+ * the request.
+ *
  * @param [in]  connected_socket file descriptor of the connected socket
  * @param [out] buf              string to be stored
- * @return                       red size
+ * @param [in]  maxlen           size of buf (including the NUL terminator)
+ * @return                       red size, 0 on receive error,
+ *                               RECV_LINE_TOO_LONG if the line exceeds maxlen
  */
-OPJ_SIZE_T receive_line(SOCKET connected_socket, char *buf);
+OPJ_SIZE_T receive_line(SOCKET connected_socket, char *buf, OPJ_SIZE_T maxlen);
 
 /**
  * receive a string line (ending with '\n') from client, return malloc string
  *
  * @param [in]  connected_socket file descriptor of the connected socket
- * @return                       pointer to the string (memory allocated)
+ * @return                       pointer to the string (memory allocated),
+ *                               NULL if the received line exceeds BUF_LEN
  */
 char * receive_string(SOCKET connected_socket);
 

@@ -134,6 +134,14 @@ if(BUILD_JPIP)
     add_test(NAME TestJPIP1 COMMAND ${CMAKE_COMMAND} -DD_URL:STRING=${s} -DD_FILE:PATH=${p}
       -DEXPECTED_MD5=${md5} -P ${PROJECT_SOURCE_DIR}/cmake/JPIPTestDriver.cmake)
   endif()
+  find_program(OPJ_PYTHON_EXECUTABLE NAMES python3 python)
+  if(OPJ_PYTHON_EXECUTABLE)
+    add_test(NAME jpip_dec_server_reqline
+      COMMAND ${OPJ_PYTHON_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/jpip_dec_server_test.py
+        $<TARGET_FILE:opj_dec_server> $<TARGET_FILE:opj_compress>)
+  else()
+    message(WARNING "No python interpreter found. Won't be able to run the opj_dec_server request line test")
+  endif()
 endif()
 
 add_executable(ppm2rgb3 ppm2rgb3.c)
